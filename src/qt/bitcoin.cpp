@@ -1,5 +1,6 @@
 /*
  * W.J. van der Laan 2011-2012
+ * The Peercoin developers 2013-2018
  */
 
 #include <QApplication>
@@ -17,7 +18,9 @@
 #include "splashscreen.h"
 
 #include <QMessageBox>
+#if QT_VERSION < 0x050000
 #include <QTextCodec>
+#endif
 #include <QLocale>
 #include <QTimer>
 #include <QTranslator>
@@ -108,7 +111,7 @@ static std::string Translate(const char* psz)
 static void handleRunawayException(std::exception *e)
 {
     PrintExceptionContinue(e, "Runaway exception");
-    QMessageBox::critical(0, "Runaway exception", BitcoinGUI::tr("A fatal error occurred. Primecoin can no longer continue safely and will quit.") + QString("\n\n") + QString::fromStdString(strMiscWarning));
+    QMessageBox::critical(0, "Runaway exception", BitcoinGUI::tr("A fatal error occurred. Peercoin can no longer continue safely and will quit.") + QString("\n\n") + QString::fromStdString(strMiscWarning));
     exit(1);
 }
 
@@ -118,9 +121,11 @@ int main(int argc, char *argv[])
     // Command-line options take precedence:
     ParseParameters(argc, argv);
 
+#if QT_VERSION < 0x050000
     // Internal string conversion is all UTF-8
     QTextCodec::setCodecForTr(QTextCodec::codecForName("UTF-8"));
     QTextCodec::setCodecForCStrings(QTextCodec::codecForTr());
+#endif
 
     Q_INIT_RESOURCE(bitcoin);
     QApplication app(argc, argv);
@@ -142,7 +147,7 @@ int main(int argc, char *argv[])
     {
         // This message can not be translated, as translation is not initialized yet
         // (which not yet possible because lang=XX can be overridden in bitcoin.conf in the data directory)
-        QMessageBox::critical(0, "Primecoin",
+        QMessageBox::critical(0, "Bitcoin",
                               QString("Error: Specified data directory \"%1\" does not exist.").arg(QString::fromStdString(mapArgs["-datadir"])));
         return 1;
     }
@@ -150,12 +155,12 @@ int main(int argc, char *argv[])
 
     // Application identification (must be set before OptionsModel is initialized,
     // as it is used to locate QSettings)
-    QApplication::setOrganizationName("Primecoin");
-    QApplication::setOrganizationDomain("primecoin.org");
+    QApplication::setOrganizationName("Peercoin");
+    QApplication::setOrganizationDomain("peercoin.net");
     if(GetBoolArg("-testnet")) // Separate UI settings for testnet
-        QApplication::setApplicationName("Primecoin-Qt-testnet");
+        QApplication::setApplicationName("Peercoin-Testnet");
     else
-        QApplication::setApplicationName("Primecoin-Qt");
+        QApplication::setApplicationName("Peercoin");
 
     // ... then GUI settings:
     OptionsModel optionsModel;
@@ -294,4 +299,5 @@ int main(int argc, char *argv[])
     }
     return 0;
 }
+
 #endif // BITCOIN_QT_TEST

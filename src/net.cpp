@@ -1,8 +1,12 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2012 The Bitcoin developers
-// Copyright (c) 2013 The Primecoin developers
-// Distributed under conditional MIT/X11 software license,
-// see the accompanying file COPYING
+// Copyright (c) 2009-2012 The Bitcoin Core developers
+// Copyright (c) 2011-2018 The Peercoin developers
+// Distributed under the MIT software license, see the accompanying
+// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+
+#if defined(HAVE_CONFIG_H)
+#include "bitcoin-config.h"
+#endif
 
 #include "db.h"
 #include "net.h"
@@ -24,6 +28,9 @@
 
 // Dump addresses to peers.dat every 15 minutes (900s)
 #define DUMP_ADDRESSES_INTERVAL 900
+#if !defined(HAVE_MSG_NOSIGNAL)
+#define MSG_NOSIGNAL 0
+#endif
 
 using namespace std;
 using namespace boost;
@@ -43,6 +50,7 @@ struct LocalServiceInfo {
 //
 bool fDiscover = true;
 uint64 nLocalServices = NODE_NETWORK;
+CAddress addrSeenByPeer(CService("0.0.0.0", 0), nLocalServices);
 static CCriticalSection cs_mapLocalHost;
 static map<CNetAddr, LocalServiceInfo> mapLocalHost;
 static bool vfReachable[NET_MAX] = {};
@@ -136,7 +144,7 @@ CAddress GetLocalAddress(const CNetAddr *paddrPeer)
 bool RecvLine(SOCKET hSocket, string& strLine)
 {
     strLine = "";
-    loop
+    ploop
     {
         char c;
         int nBytes = recv(hSocket, &c, 1, 0);
@@ -308,7 +316,7 @@ bool GetMyExternalIP2(const CService& addrConnect, const char* pszGet, const cha
     {
         if (strLine.empty()) // HTTP response is separated from headers by blank line
         {
-            loop
+            ploop
             {
                 if (!RecvLine(hSocket, strLine))
                 {
@@ -403,7 +411,7 @@ bool GetMyExternalIP(CNetAddr& ipRet)
 void ThreadGetMyExternalIP(void* parg)
 {
     // Make this thread recognisable as the external IP detection thread
-    RenameThread("primecoin-ext-ip");
+    RenameThread("peercoin-ext-ip");
 
     CNetAddr addrLocalHost;
     if (GetMyExternalIP(addrLocalHost))
@@ -751,7 +759,7 @@ static list<CNode*> vNodesDisconnected;
 void ThreadSocketHandler()
 {
     unsigned int nPrevNodeCount = 0;
-    loop
+    ploop
     {
         //
         // Disconnect nodes
@@ -1028,6 +1036,7 @@ void ThreadSocketHandler()
                     SocketSendData(pnode);
             }
 
+#ifndef TESTING
             //
             // Inactivity checking
             //
@@ -1051,6 +1060,7 @@ void ThreadSocketHandler()
                     pnode->fDisconnect = true;
                 }
             }
+#endif
         }
         {
             LOCK(cs_vNodes);
@@ -1082,10 +1092,14 @@ void ThreadMapPort()
 #ifndef UPNPDISCOVER_SUCCESS
     /* miniupnpc 1.5 */
     devlist = upnpDiscover(2000, multicastif, minissdpdpath, 0);
-#else
+#elif MINIUPNPC_API_VERSION < 14
     /* miniupnpc 1.6 */
     int error = 0;
     devlist = upnpDiscover(2000, multicastif, minissdpdpath, 0, 0, &error);
+#else
+    /* miniupnpc 1.9.20150730 */
+    int error = 0;
+    devlist = upnpDiscover(2000, multicastif, minissdpdpath, 0, 0, 2, &error);
 #endif
 
     struct UPNPUrls urls;
@@ -1112,10 +1126,10 @@ void ThreadMapPort()
             }
         }
 
-        string strDesc = "Primecoin " + FormatFullVersion();
+        string strDesc = "Peercoin " + FormatFullVersion();
 
         try {
-            loop {
+            ploop {
 #ifndef UPNPDISCOVER_SUCCESS
                 /* miniupnpc 1.5 */
                 r = UPNP_AddPortMapping(urls.controlURL, data.first.servicetype,
@@ -1192,16 +1206,13 @@ void MapPort(bool)
 // The first name is used as information source for addrman.
 // The second name should resolve to a list of seed addresses.
 static const char *strMainNetDNSSeed[][2] = {
-    {"primecoin.net", "seed.ppcoin.net"},
-    {"xpm.altcointech.net", "dnsseed.xpm.altcointech.net"},
-    {"xpm2.altcointech.net", "dnsseed.xpm2.altcointech.net"},
-    {"primeseed.muuttuja.org", "primeseed.muuttuja.org"},
+    {"seedpeercoin", "seed.peercoin.net"},
+    {"seed", "seed.ppcoin.net"},
     {NULL, NULL}
 };
 
 static const char *strTestNetDNSSeed[][2] = {
-    {"primecoin.net", "tnseed.ppcoin.net"},
-    {"primeseedtn.muuttuja.org", "primeseedtn.muuttuja.org"},
+    {"tseedpeercoin", "tseed.peercoin.net"},
     {NULL, NULL}
 };
 
@@ -1247,17 +1258,13 @@ void ThreadDNSAddressSeed()
 
 
 
-// Physical IP seeds: 32-bit IPv4 addresses: e.g. 178.33.22.32 = 0x201621b2
-unsigned int pnSeedMainNet[] =
-{
-    0xde3cc718, 0x43b9191f, 0x79753932, 0x70d6dd36, 0x746f1f4e, 0x732dfb54,
-    0x48926257, 0x3a38be58, 0xaed7175e, 0x7714166b, 0x201621b2, 0x96706ab8,
-    0x2fafedc0, 0x77daf1c0, 0x4677c7c6, 0xf3c645d3,
-};
 
-unsigned int pnSeedTestNet[] =
+// Physical IP seeds: 32-bit IPv4 addresses: e.g. 178.33.22.32 = 0x201621b2
+unsigned int pnSeed[] =
 {
-    0x184bbb25, 0x0a1621b2,
+    0x36a3b545, 0x3c1c26d8, 0x4031eb6d, 0x4d3463d1, 0x586a6854, 0x5da9ae65,
+    0x6deb7318, 0x9083fb63, 0x961bf618, 0xcabd2e4e, 0xcb766dd5, 0xdd514518,
+    0xdff010b8, 0xe9bb6044, 0xedb24a4c,
 };
 
 void DumpAddresses()
@@ -1267,7 +1274,7 @@ void DumpAddresses()
     CAddrDB adb;
     adb.Write(addrman);
 
-    printf("Flushed %d addresses to peers.dat  %"PRI64d"ms\n",
+    printf("Flushed %d addresses to peers.dat  %" PRI64d"ms\n",
            addrman.size(), GetTimeMillis() - nStart);
 }
 
@@ -1312,7 +1319,7 @@ void ThreadOpenConnections()
 
     // Initiate network connections
     int64 nStart = GetTime();
-    loop
+    ploop
     {
         ProcessOneShot();
 
@@ -1322,9 +1329,8 @@ void ThreadOpenConnections()
         boost::this_thread::interruption_point();
 
         // Add seed nodes if IRC isn't working
-        if (addrman.size()==0 && (GetTime() - nStart > 60))
+        if (addrman.size()==0 && (GetTime() - nStart > 60) && !fTestNet)
         {
-            static const unsigned int *pnSeed = fTestNet? pnSeedTestNet : pnSeedMainNet;
             std::vector<CAddress> vAdd;
             for (unsigned int i = 0; i < ARRAYLEN(pnSeed); i++)
             {
@@ -1364,7 +1370,7 @@ void ThreadOpenConnections()
         int64 nANow = GetAdjustedTime();
 
         int nTries = 0;
-        loop
+        ploop
         {
             // use an nUnkBias between 10 (no outgoing connections) and 90 (8 outgoing connections)
             CAddress addr = addrman.Select(10 + min(nOutbound,8)*10);
@@ -1691,7 +1697,7 @@ bool BindListenPort(const CService &addrBind, string& strError)
     {
         int nErr = WSAGetLastError();
         if (nErr == WSAEADDRINUSE)
-            strError = strprintf(_("Unable to bind to %s on this computer. Primecoin is probably already running."), addrBind.ToString().c_str());
+            strError = strprintf(_("Unable to bind to %s on this computer. Peercoin is probably already running."), addrBind.ToString().c_str());
         else
             strError = strprintf(_("Unable to bind to %s on this computer (bind returned error %d, %s)"), addrBind.ToString().c_str(), nErr, strerror(nErr));
         printf("%s\n", strError.c_str());
@@ -1817,7 +1823,9 @@ void StartNode(boost::thread_group& threadGroup)
 bool StopNode()
 {
     printf("StopNode()\n");
+#ifndef DISABLE_MINING
     GenerateBitcoins(false, NULL);
+#endif // DISABLE_MINING
     MapPort(false);
     nTransactionsUpdated++;
     if (semOutbound)
@@ -1880,9 +1888,8 @@ void RelayTransaction(const CTransaction& tx, const uint256& hash)
     RelayTransaction(tx, hash, ss);
 }
 
-void RelayTransaction(const CTransaction& tx, const uint256& hash, const CDataStream& ss)
+static void AddRelay(const CInv& inv, const CDataStream& ss)
 {
-    CInv inv(MSG_TX, hash);
     {
         LOCK(cs_mapRelay);
         // Expire old relay messages
@@ -1896,6 +1903,12 @@ void RelayTransaction(const CTransaction& tx, const uint256& hash, const CDataSt
         mapRelay.insert(std::make_pair(inv, ss));
         vRelayExpiration.push_back(std::make_pair(GetTime() + 15 * 60, inv));
     }
+}
+
+void RelayTransaction(const CTransaction& tx, const uint256& hash, const CDataStream& ss)
+{
+    CInv inv(MSG_TX, hash);
+    AddRelay(inv, ss);
     LOCK(cs_vNodes);
     BOOST_FOREACH(CNode* pnode, vNodes)
     {
@@ -1909,4 +1922,21 @@ void RelayTransaction(const CTransaction& tx, const uint256& hash, const CDataSt
         } else
             pnode->PushInventory(inv);
     }
+}
+
+void RelayBlock(const CBlock& block, const uint256& hash)
+{
+    CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
+    ss.reserve(10000);
+    ss << block;
+    RelayBlock(block, hash, ss);
+}
+
+void RelayBlock(const CBlock& tx, const uint256& hash, const CDataStream& ss)
+{
+    CInv inv(MSG_BLOCK, hash);
+    AddRelay(inv, ss);
+    LOCK(cs_vNodes);
+    BOOST_FOREACH(CNode* pnode, vNodes)
+        pnode->PushInventory(inv);
 }

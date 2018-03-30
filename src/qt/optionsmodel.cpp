@@ -1,9 +1,14 @@
+#if defined(HAVE_CONFIG_H)
+#include "bitcoin-config.h"
+#endif
+
 #include "optionsmodel.h"
 
 #include "bitcoinunits.h"
 #include "init.h"
 #include "walletdb.h"
 #include "guiutil.h"
+#include "checkpointsync.h"
 
 #include <QSettings>
 
@@ -46,8 +51,9 @@ void OptionsModel::Init()
     bDisplayAddresses = settings.value("bDisplayAddresses", false).toBool();
     fMinimizeToTray = settings.value("fMinimizeToTray", false).toBool();
     fMinimizeOnClose = settings.value("fMinimizeOnClose", false).toBool();
-    nTransactionFee = settings.value("nTransactionFee").toLongLong();
+    fCoinControlFeatures = settings.value("fCoinControlFeatures", false).toBool();
     language = settings.value("language", "").toString();
+    fCheckpointEnforce = settings.value("fCheckpointEnforce", true).toBool();
 
     // These are shared with core Bitcoin; we want
     // command-line options to override the GUI settings:
@@ -59,6 +65,8 @@ void OptionsModel::Init()
         SoftSetArg("-socks", settings.value("nSocksVersion").toString().toStdString());
     if (!language.isEmpty())
         SoftSetArg("-lang", language.toStdString());
+    if (settings.contains("fCheckpointEnforce"))
+        SoftSetBoolArg("-enforcecheckpoint", settings.value("fCheckpointEnforce").toBool());
 }
 
 void OptionsModel::Reset()
@@ -92,7 +100,7 @@ bool OptionsModel::Upgrade()
     CWalletDB walletdb("wallet.dat");
 
     QList<QString> intOptions;
-    intOptions << "nDisplayUnit" << "nTransactionFee";
+    intOptions << "nDisplayUnit";
     foreach(QString key, intOptions)
     {
         int value = 0;
@@ -188,14 +196,16 @@ QVariant OptionsModel::data(const QModelIndex & index, int role) const
             else
                 return QVariant(5);
         }
-        case Fee:
-            return QVariant(nTransactionFee);
         case DisplayUnit:
             return QVariant(nDisplayUnit);
         case DisplayAddresses:
             return QVariant(bDisplayAddresses);
+        case CoinControlFeatures:
+            return QVariant(fCoinControlFeatures);
         case Language:
             return settings.value("language", "");
+        case CheckpointEnforce:
+            return IsSyncCheckpointEnforced();
         default:
             return QVariant();
         }
@@ -261,10 +271,6 @@ bool OptionsModel::setData(const QModelIndex & index, const QVariant & value, in
             successful = ApplyProxySettings();
         }
         break;
-        case Fee:
-            nTransactionFee = value.toLongLong();
-            settings.setValue("nTransactionFee", nTransactionFee);
-            break;
         case DisplayUnit:
             nDisplayUnit = value.toInt();
             settings.setValue("nDisplayUnit", nDisplayUnit);
@@ -277,6 +283,16 @@ bool OptionsModel::setData(const QModelIndex & index, const QVariant & value, in
         case Language:
             settings.setValue("language", value);
             break;
+        case CoinControlFeatures:
+            fCoinControlFeatures = value.toBool();
+            settings.setValue("fCoinControlFeatures", fCoinControlFeatures);
+            emit coinControlFeaturesChanged(fCoinControlFeatures);
+            break;
+        case CheckpointEnforce:
+            fCheckpointEnforce = value.toBool();
+            settings.setValue("fCheckpointEnforce", fCheckpointEnforce);
+            SetCheckpointEnforce(fCheckpointEnforce);
+            break;
         default:
             break;
         }
@@ -284,9 +300,4 @@ bool OptionsModel::setData(const QModelIndex & index, const QVariant & value, in
     emit dataChanged(index, index);
 
     return successful;
-}
-
-qint64 OptionsModel::getTransactionFee()
-{
-    return nTransactionFee;
 }

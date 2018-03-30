@@ -1,19 +1,21 @@
 // Copyright (c) 2009-2012 The Bitcoin developers
-// Copyright (c) 2013 Primecoin developers
-// Distributed under conditional MIT/X11 software license,
-// see the accompanying file COPYING
+// Copyright (c) 2011-2018 The Peercoin developers
+// Distributed under the MIT/X11 software license, see the accompanying
+// file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <boost/assign/list_of.hpp> // for 'map_list_of()'
 #include <boost/foreach.hpp>
 
 #include "checkpoints.h"
 
+#include "db.h"
 #include "main.h"
+#include "txdb.h"
 #include "uint256.h"
 
 namespace Checkpoints
 {
-    typedef std::map<int, uint256> MapCheckpoints;
+    typedef std::map<int, uint256> MapCheckpoints;   // hardened checkpoints
 
     // How many times we expect transactions after the last checkpoint to
     // be slower. This number is a compromise, as it can't be accurate for
@@ -37,16 +39,18 @@ namespace Checkpoints
     static MapCheckpoints mapCheckpoints =
         boost::assign::map_list_of
         ( 0, hashGenesisBlockOfficial )
-        ( 74722, uint256("0x74778cd8a5f2fbacca95dc4de02771e24e365c3f28412189f349355096826afe"))
-        ( 84106, uint256("0xbb081d595e948203a67a7501c30d6a8c413db97deb1234185c4929f66be945ef"))
-        ( 85429, uint256("0xa2bd26fbebcfa02f4e291806f0214e17c2dfb250c3443bbb1778c0cd532776f4"))
+        ( 19080, uint256("0x000000000000bca54d9ac17881f94193fd6a270c1bb21c3bf0b37f588a40dbd7"))
+        ( 30583, uint256("0xd39d1481a7eecba48932ea5913be58ad3894c7ee6d5a8ba8abeb772c66a6696e"))
+        ( 99999, uint256("0x27fd5e1de16a4270eb8c68dee2754a64da6312c7c3a0e99a7e6776246be1ee3f"))
+        (219999, uint256("0xab0dad4b10d2370f009ed6df6effca1ba42f01d5070d6b30afeedf6463fbe7a2"))
+        (336000, uint256("0x4d261cef6e61a5ed8325e560f1d6e36f4698853a4c7134677f47a1d1d842bdf6"))
         ;
     static const CCheckpointData data = {
         &mapCheckpoints,
-        1374921070, // * UNIX timestamp of last checkpoint block
-        14264869,   // * total number of transactions between genesis and last checkpoint
+        1511962881, // * UNIX timestamp of last checkpoint block
+        1331659,   // * total number of transactions between genesis and last checkpoint
                     //   (the tx=... number in the SetBestChain debug.log lines)
-        60000.0     // * estimated number of transactions per day after checkpoint
+        1000.0     // * estimated number of transactions per day after checkpoint
     };
 
     static MapCheckpoints mapCheckpointsTestnet = 
@@ -67,7 +71,7 @@ namespace Checkpoints
             return data;
     }
 
-    bool CheckBlock(int nHeight, const uint256& hash)
+    bool CheckHardened(int nHeight, const uint256& hash)
     {
         if (!GetBoolArg("-checkpoints", true))
             return true;

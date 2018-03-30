@@ -10,6 +10,7 @@
 #include "addressbookpage.h"
 #include "sendcoinsdialog.h"
 #include "signverifymessagedialog.h"
+#include "multisigdialog.h"
 #include "clientmodel.h"
 #include "walletmodel.h"
 #include "optionsmodel.h"
@@ -17,6 +18,8 @@
 #include "overviewpage.h"
 #include "askpassphrasedialog.h"
 #include "ui_interface.h"
+#include "mintingview.h"
+#include "wallet.h"
 
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -49,9 +52,17 @@ WalletView::WalletView(QWidget *parent, BitcoinGUI *_gui):
     vbox->addLayout(hbox_buttons);
     transactionsPage->setLayout(vbox);
 
+    mintingPage = new QWidget(this);
+    QVBoxLayout *vboxMinting = new QVBoxLayout();
+    mintingView = new MintingView(this);
+    vboxMinting->addWidget(mintingView);
+    mintingPage->setLayout(vboxMinting);
+
     addressBookPage = new AddressBookPage(AddressBookPage::ForEditing, AddressBookPage::SendingTab);
 
     receiveCoinsPage = new AddressBookPage(AddressBookPage::ForEditing, AddressBookPage::ReceivingTab);
+
+    multisigPage = new MultisigDialog(this);
 
     sendCoinsPage = new SendCoinsDialog(gui);
 
@@ -59,6 +70,8 @@ WalletView::WalletView(QWidget *parent, BitcoinGUI *_gui):
 
     addWidget(overviewPage);
     addWidget(transactionsPage);
+    addWidget(mintingPage);
+    addWidget(multisigPage);
     addWidget(addressBookPage);
     addWidget(receiveCoinsPage);
     addWidget(sendCoinsPage);
@@ -112,6 +125,8 @@ void WalletView::setWalletModel(WalletModel *walletModel)
 
         // Put transaction list in tabs
         transactionView->setModel(walletModel);
+        mintingView->setModel(walletModel);
+        multisigPage->setModel(walletModel);
         overviewPage->setWalletModel(walletModel);
         addressBookPage->setModel(walletModel->getAddressTableModel());
         receiveCoinsPage->setModel(walletModel->getAddressTableModel());
@@ -156,6 +171,18 @@ void WalletView::gotoHistoryPage()
 {
     gui->getHistoryAction()->setChecked(true);
     setCurrentWidget(transactionsPage);
+}
+
+void WalletView::gotoMintingPage()
+{
+    gui->getMintingAction()->setChecked(true);
+    setCurrentWidget(mintingPage);
+}
+
+void WalletView::gotoMultisigPage()
+{
+    gui->getMultisigAction()->setChecked(true);
+    setCurrentWidget(multisigPage);
 }
 
 void WalletView::gotoAddressBookPage()
@@ -231,9 +258,44 @@ void WalletView::encryptWallet(bool status)
     setEncryptionStatus();
 }
 
+void WalletView::decryptForMinting(bool status)
+{
+    if(!walletModel)
+        return;
+
+    if (status)
+    {
+        if(walletModel->getEncryptionStatus() != WalletModel::Locked)
+            return;
+
+        AskPassphraseDialog dlg(AskPassphraseDialog::Unlock, this);
+        dlg.setModel(walletModel);
+        dlg.exec();
+
+        if(walletModel->getEncryptionStatus() != WalletModel::Unlocked)
+            return;
+
+        fWalletUnlockMintOnly = true;
+    }
+    else
+    {
+        if(walletModel->getEncryptionStatus() != WalletModel::Unlocked)
+            return;
+
+        if (!fWalletUnlockMintOnly)
+            return;
+
+        walletModel->setWalletLocked(true);
+        fWalletUnlockMintOnly = false;
+    }
+}
 void WalletView::backupWallet()
 {
+#if QT_VERSION < 0x050000
     QString saveDir = QDesktopServices::storageLocation(QDesktopServices::DocumentsLocation);
+#else
+    QString saveDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/data/organization/application";
+#endif
     QString filename = QFileDialog::getSaveFileName(this, tr("Backup Wallet"), saveDir, tr("Wallet Data (*.dat)"));
     if (!filename.isEmpty()) {
         if (!walletModel->backupWallet(filename)) {

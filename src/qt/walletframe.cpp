@@ -80,6 +80,16 @@ void WalletFrame::gotoHistoryPage()
     walletStack->gotoHistoryPage();
 }
 
+void WalletFrame::gotoMultisigPage()
+{
+    walletStack->gotoMultisigPage();
+}
+
+void WalletFrame::gotoMintingPage()
+{
+    walletStack->gotoMintingPage();
+}
+
 void WalletFrame::gotoAddressBookPage()
 {
     walletStack->gotoAddressBookPage();
@@ -108,6 +118,11 @@ void WalletFrame::gotoVerifyMessageTab(QString addr)
 void WalletFrame::encryptWallet(bool status)
 {
     walletStack->encryptWallet(status);
+}
+
+void WalletFrame::decryptForMinting(bool status)
+{
+    walletStack->decryptForMinting(status);
 }
 
 void WalletFrame::backupWallet()

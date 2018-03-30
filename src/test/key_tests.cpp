@@ -10,14 +10,14 @@
 
 using namespace std;
 
-static const string strSecret1     ("5HxWvvfubhXpYYpS3tJkw6fq9jE9j18THftkZjHHfmFiWtmAbrj");
-static const string strSecret2     ("5KC4ejrDjv152FGwP386VD1i2NYc5KkfSMyv1nGy1VGDxGHqVY3");
-static const string strSecret1C    ("Kwr371tjA9u2rFSMZjTNun2PXXP3WPZu2afRHTcta6KxEUdm1vEw");
-static const string strSecret2C    ("L3Hq7a8FEQwJkW1M2GNKDW28546Vp5miewcCzSqUD9kCAXrJdS3g");
-static const CBitcoinAddress addr1 ("1QFqqMUD55ZV3PJEJZtaKCsQmjLT6JkjvJ");
-static const CBitcoinAddress addr2 ("1F5y5E5FMc5YzdJtB9hLaUe43GDxEKXENJ");
-static const CBitcoinAddress addr1C("1NoJrossxPBKfCHuJXT4HadJrXRE9Fxiqs");
-static const CBitcoinAddress addr2C("1CRj2HyM1CXWzHAXLQtiGLyggNT9WQqsDs");
+static const string strSecret1     ("7AChr8cfXUxKJCpjekqEQGoRgpN1iFw44egp4jtqzmX8xTdtsiy");
+static const string strSecret2     ("79kbfhqh1HV1B8ZxnsbSnu2F9jbm7XryrNBgvSKusoTpeppWmZr");
+static const string strSecret1C    ("UBcfHrcR3YP9kwBhFeTt9ijuxk3k96uaX7LijWKqFyW27MPrVSuX");
+static const string strSecret2C    ("U9dS1qFuaFkbmiQVFUK2qacVTZ2RhqDbvtWBCrnUPE5PKkLweTka");
+static const CBitcoinAddress addr1 ("PKkaDEczLygWFN1C3ccEGraLshKMMEoBgn");
+static const CBitcoinAddress addr2 ("PXYTm8BcoygtXB7VrAn77DeXhXCNSxxwsW");
+static const CBitcoinAddress addr1C("PJC1cL5mBMKmQ357ZNMDVAWH5sDVJNX3p8");
+static const CBitcoinAddress addr2C("P95CZ3kFgAvjnMdRgqLoApDuQ49ir7VAP7");
 
 
 static const string strAddressBad("1HV9Lc3sNHZxwj4Zk6fB38tEmBryq2cBiF");
@@ -142,6 +142,51 @@ BOOST_AUTO_TEST_CASE(key_test1)
         BOOST_CHECK(rkey1C.GetPubKey() == key1C.GetPubKey());
         BOOST_CHECK(rkey2C.GetPubKey() == key2C.GetPubKey());
     }
+}
+
+BOOST_AUTO_TEST_CASE(long_signature_length_test)
+{
+  uint256 hash("c5564b4312dbea29d4a5601a77084fd5bb8ec62210aa05dcf0c0d48063044609");
+  CKey key;
+  key.SetPubKey(ParseHex("03d4b1beb94313fc4395e38b4ba4ea74f62c5ecec2454c49cbf21d4262803b5469"));
+
+  {
+      // R length on 5 bytes
+      const std::vector<unsigned char>& vchSigParam(ParseHex("304a0285000000002100d1c453ddcaae9215a24fc86d50916b66117839d163402d9ed21a1f4aba3173e302200ce3d43a4c4841a340c267c9fa1f3aa43c1e51c0d5043e91a85c954e14c6b91f"));
+      BOOST_CHECK(key.Verify(hash, vchSigParam));
+  }
+
+  {
+      // R and S lengths on 5 bytes
+      const std::vector<unsigned char>& vchSigParam(ParseHex("304f0285000000002100d1c453ddcaae9215a24fc86d50916b66117839d163402d9ed21a1f4aba3173e3028500000000200ce3d43a4c4841a340c267c9fa1f3aa43c1e51c0d5043e91a85c954e14c6b91f"));
+      BOOST_CHECK(key.Verify(hash, vchSigParam));
+  }
+
+  {
+      // R and global lengths on 5 bytes
+      const std::vector<unsigned char>& vchSigParam(ParseHex("3085000000004a0285000000002100d1c453ddcaae9215a24fc86d50916b66117839d163402d9ed21a1f4aba3173e302200ce3d43a4c4841a340c267c9fa1f3aa43c1e51c0d5043e91a85c954e14c6b91f"));
+      BOOST_CHECK(key.Verify(hash, vchSigParam));
+  }
+
+  {
+      // R length on 8 bytes
+      const std::vector<unsigned char>& vchSigParam(ParseHex("304d0288000000000000002100d1c453ddcaae9215a24fc86d50916b66117839d163402d9ed21a1f4aba3173e302200ce3d43a4c4841a340c267c9fa1f3aa43c1e51c0d5043e91a85c954e14c6b91f"));
+      BOOST_CHECK(key.Verify(hash, vchSigParam));
+  }
+
+  {
+      // R length on 9 bytes
+      // Rejected by OpenSSL 64 bits, so it should be always rejected
+      const std::vector<unsigned char>& vchSigParam(ParseHex("304e028900000000000000002100d1c453ddcaae9215a24fc86d50916b66117839d163402d9ed21a1f4aba3173e302200ce3d43a4c4841a340c267c9fa1f3aa43c1e51c0d5043e91a85c954e14c6b91f"));
+      BOOST_CHECK(!key.Verify(hash, vchSigParam));
+  }
+
+  {
+      // OpenSSL allows zero padding on R and S, so long lengths must work
+      // But signatures are not allowed to exceed 520 bytes
+      const std::vector<unsigned char>& vchSigParam(ParseHex("30820204028500000001db0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000d1c453ddcaae9215a24fc86d50916b66117839d163402d9ed21a1f4aba3173e302200ce3d43a4c4841a340c267c9fa1f3aa43c1e51c0d5043e91a85c954e14c6b91f"));
+      BOOST_CHECK(key.Verify(hash, vchSigParam));
+  }
 }
 
 BOOST_AUTO_TEST_SUITE_END()

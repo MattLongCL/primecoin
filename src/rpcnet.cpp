@@ -1,11 +1,10 @@
-// Copyright (c) 2009-2012 Bitcoin Developers
-// Copyright (c) 2012-2013 PPCoin developers
-// Copyright (c) 2013 Primecoin developers
+// Copyright (c) 2009-2012 The Bitcoin developers
+// Copyright (c) 2013-2018 The Peercoin developers
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include "rpcserver.h"
 #include "net.h"
-#include "bitcoinrpc.h"
 #include "alert.h"
 #include "base58.h"
 
@@ -52,7 +51,7 @@ Value getpeerinfo(const Array& params, bool fHelp)
         Object obj;
 
         obj.push_back(Pair("addr", stats.addrName));
-        obj.push_back(Pair("services", strprintf("%08"PRI64x, stats.nServices)));
+        obj.push_back(Pair("services", strprintf("%08" PRI64x, stats.nServices)));
         obj.push_back(Pair("lastsend", (boost::int64_t)stats.nLastSend));
         obj.push_back(Pair("lastrecv", (boost::int64_t)stats.nLastRecv));
         obj.push_back(Pair("bytessent", (boost::int64_t)stats.nSendBytes));
@@ -209,8 +208,7 @@ Value getaddednodeinfo(const Array& params, bool fHelp)
     return ret;
 }
 
-
-// make a public-private key pair (first introduced in ppcoin)
+// ppcoin: make a public-private key pair
 Value makekeypair(const Array& params, bool fHelp)
 {
     if (fHelp || params.size() > 1)
@@ -234,26 +232,59 @@ Value makekeypair(const Array& params, bool fHelp)
     if (strPrefix != HexStr(key.GetPubKey().Raw()).substr(0, strPrefix.size()))
         return Value::null;
 
-    bool fCompressed;
-    CSecret vchSecret = key.GetSecret(fCompressed);
     Object result;
     result.push_back(Pair("PublicKey", HexStr(key.GetPubKey().Raw())));
+    bool fCompressed;
+    CSecret vchSecret = key.GetSecret(fCompressed);
     result.push_back(Pair("PrivateKey", CBitcoinSecret(vchSecret, fCompressed).ToString()));
+    CPrivKey vchPrivKey = key.GetPrivKey();
+    result.push_back(Pair("PrivateKeyHex", HexStr<CPrivKey::iterator>(vchPrivKey.begin(), vchPrivKey.end())));
     return result;
 }
 
+// ppcoin: display key pair from hex private key
+Value showkeypair(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+        throw runtime_error(
+            "showkeypair <hexprivkey>\n"
+            "Display a public/private key pair with given hex private key.\n"
+            "<hexprivkey> is the private key in hex form.\n");
 
-// Send alert (first introduced in ppcoin)
+    string strPrivKey = params[0].get_str();
+
+    std::vector<unsigned char> vchPrivKey = ParseHex(strPrivKey);
+    CKey key;
+    key.SetPrivKey(CPrivKey(vchPrivKey.begin(), vchPrivKey.end())); // if key is not correct openssl may crash
+
+    // Test signing some message
+    string strMsg = "Test sign by showkeypair";
+    std::vector<unsigned char> vchMsg(strMsg.begin(), strMsg.end());
+    std::vector<unsigned char> vchSig;
+    if (!key.Sign(Hash(vchMsg.begin(), vchMsg.end()), vchSig))
+        throw runtime_error(
+            "Failed to sign using the key, bad key?\n");
+
+    Object result;
+    result.push_back(Pair("PublicKey", HexStr(key.GetPubKey().Raw())));
+    bool fCompressed;
+    CSecret vchSecret = key.GetSecret(fCompressed);
+    result.push_back(Pair("PrivateKey", CBitcoinSecret(vchSecret, fCompressed).ToString()));
+    result.push_back(Pair("PrivateKeyHex", strPrivKey));
+    return result;
+}
+
+// ppcoin: send alert.  
 // There is a known deadlock situation with ThreadMessageHandler
 // ThreadMessageHandler: holds cs_vSend and acquiring cs_main in SendMessages()
 // ThreadRPCServer: holds cs_main and acquiring cs_vSend in alert.RelayTo()/PushMessage()/BeginMessage()
 Value sendalert(const Array& params, bool fHelp)
 {
     if (fHelp || params.size() < 6)
-        throw runtime_error(
+	throw runtime_error(
             "sendalert <message> <privatekey> <minver> <maxver> <priority> <id> [cancelupto]\n"
             "<message> is the alert text message\n"
-            "<privatekey> is base58 hex string of alert master private key\n"
+            "<privatekey> is hex string of alert master private key\n"
             "<minver> is the minimum applicable internal client version\n"
             "<maxver> is the maximum applicable internal client version\n"
             "<priority> is integer priority number\n"
@@ -261,8 +292,9 @@ Value sendalert(const Array& params, bool fHelp)
             "[cancelupto] cancels all alert id's up to this number\n"
             "Returns true or false.");
 
-    // Prepare the alert message
     CAlert alert;
+    CKey key;
+
     alert.strStatusBar = params[0].get_str();
     alert.nMinVer = params[2].get_int();
     alert.nMaxVer = params[3].get_int();
@@ -277,24 +309,15 @@ Value sendalert(const Array& params, bool fHelp)
     CDataStream sMsg(SER_NETWORK, PROTOCOL_VERSION);
     sMsg << (CUnsignedAlert)alert;
     alert.vchMsg = vector<unsigned char>(sMsg.begin(), sMsg.end());
-
-    // Prepare master key and sign alert message
-    CBitcoinSecret vchSecret;
-    if (!vchSecret.SetString(params[1].get_str()))
-        throw runtime_error("Invalid alert master key");
-    CKey key;
-    bool fCompressed;
-    CSecret secret = vchSecret.GetSecret(fCompressed);
-    key.SetSecret(secret, fCompressed); // if key is not correct openssl may crash
+    
+    vector<unsigned char> vchPrivKey = ParseHex(params[1].get_str());
+    key.SetPrivKey(CPrivKey(vchPrivKey.begin(), vchPrivKey.end())); // if key is not correct openssl may crash
     if (!key.Sign(Hash(alert.vchMsg.begin(), alert.vchMsg.end()), alert.vchSig))
         throw runtime_error(
-            "Unable to sign alert, check alert master key?\n");
-
-    // Process alert
-    if(!alert.ProcessAlert())
+            "Unable to sign alert, check private key?\n");  
+    if(!alert.ProcessAlert()) 
         throw runtime_error(
             "Failed to process alert.\n");
-
     // Relay alert
     {
         LOCK(cs_vNodes);
@@ -313,4 +336,3 @@ Value sendalert(const Array& params, bool fHelp)
         result.push_back(Pair("nCancel", alert.nCancel));
     return result;
 }
-

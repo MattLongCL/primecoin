@@ -18,6 +18,7 @@ WalletStack::WalletStack(QWidget *parent) :
     bOutOfSync(true)
 {
     setContentsMargins(0,0,0,0);
+    setObjectName("walletstack");
 }
 
 WalletStack::~WalletStack()
@@ -82,6 +83,20 @@ void WalletStack::gotoOverviewPage()
         i.value()->gotoOverviewPage();
 }
 
+void WalletStack::gotoMultisigPage()
+{
+    QMap<QString, WalletView*>::const_iterator i;
+    for (i = mapWalletViews.constBegin(); i != mapWalletViews.constEnd(); ++i)
+        i.value()->gotoMultisigPage();
+}
+
+void WalletStack::gotoMintingPage()
+{
+    QMap<QString, WalletView*>::const_iterator i;
+    for (i = mapWalletViews.constBegin(); i != mapWalletViews.constEnd(); ++i)
+        i.value()->gotoMintingPage();
+}
+
 void WalletStack::gotoHistoryPage()
 {
     QMap<QString, WalletView*>::const_iterator i;
@@ -126,6 +141,12 @@ void WalletStack::encryptWallet(bool status)
 {
     WalletView *walletView = (WalletView*)currentWidget();
     if (walletView) walletView->encryptWallet(status);
+}
+
+void WalletStack::decryptForMinting(bool status)
+{
+    WalletView *walletView = (WalletView*)currentWidget();
+    if (walletView) walletView->decryptForMinting(status);
 }
 
 void WalletStack::backupWallet()

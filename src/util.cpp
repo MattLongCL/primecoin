@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2012 The Bitcoin developers
-// Copyright (c) 2013 The Primecoin developers
+// Copyright (c) 2011-2018 The Peercoin developers
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -67,6 +67,10 @@ namespace boost {
 # include <sys/prctl.h>
 #endif
 
+#ifndef WIN32
+#include <execinfo.h>
+#endif
+
 using namespace std;
 
 map<string, string> mapArgs;
@@ -85,9 +89,15 @@ bool fLogTimestamps = false;
 CMedianFilter<int64> vTimeOffsets(200,0);
 volatile bool fReopenDebugLog = false;
 bool fCachedPath[2] = {false, false};
+CClientUIInterface uiInterface;
 
 // Init OpenSSL library multithreading support
 static CCriticalSection** ppmutexOpenSSL;
+
+#ifdef TESTING
+int64 nTimeShift = 0;
+#endif
+
 void locking_callback(int mode, int i, const char* file, int line)
 {
     if (mode & CRYPTO_LOCK) {
@@ -312,7 +322,7 @@ string vstrprintf(const char *format, va_list ap)
     char* p = buffer;
     int limit = sizeof(buffer);
     int ret;
-    loop
+    ploop
     {
         va_list arg_ptr;
         va_copy(arg_ptr, ap);
@@ -372,7 +382,7 @@ void ParseString(const string& str, char c, vector<string>& v)
         return;
     string::size_type i1 = 0;
     string::size_type i2;
-    loop
+    ploop
     {
         i2 = str.find(c, i1);
         if (i2 == str.npos)
@@ -393,7 +403,7 @@ string FormatMoney(int64 n, bool fPlus)
     int64 n_abs = (n > 0 ? n : -n);
     int64 quotient = n_abs/COIN;
     int64 remainder = n_abs%COIN;
-    string str = strprintf("%"PRI64d".%08"PRI64d, quotient, remainder);
+    string str = strprintf("%" PRI64d".%06" PRI64d, quotient, remainder);
 
     // Right-trim excess zeros before the decimal point:
     int nTrim = 0;
@@ -457,7 +467,7 @@ bool ParseMoney(const char* pszIn, int64& nRet)
 
 // safeChars chosen to allow simple messages/URLs/email addresses, but avoid anything
 // even possibly remotely dangerous like & or >
-static string safeChars("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890 .,;_/:?@-()");
+static string safeChars("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890 .,;_/:?@");
 string SanitizeString(const string& str)
 {
     string strResult;
@@ -501,7 +511,7 @@ vector<unsigned char> ParseHex(const char* psz)
 {
     // convert hex dump to vector
     vector<unsigned char> vch;
-    loop
+    ploop
     {
         while (isspace(*psz))
             psz++;
@@ -955,7 +965,7 @@ string DecodeBase32(const string& str)
 
 bool WildcardMatch(const char* psz, const char* mask)
 {
-    loop
+    ploop
     {
         switch (*mask)
         {
@@ -995,7 +1005,7 @@ static std::string FormatException(std::exception* pex, const char* pszThread)
     char pszModule[MAX_PATH] = "";
     GetModuleFileNameA(NULL, pszModule, sizeof(pszModule));
 #else
-    const char* pszModule = "primecoin";
+    const char* pszModule = "peercoin";
 #endif
     if (pex)
         return strprintf(
@@ -1020,6 +1030,19 @@ void PrintException(std::exception* pex, const char* pszThread)
     throw;
 }
 
+void LogStackTrace() {
+    printf("\n\n******* exception encountered *******\n");
+    if (fileout)
+    {
+#ifndef WIN32
+        void* pszBuffer[32];
+        size_t size;
+        size = backtrace(pszBuffer, 32);
+        backtrace_symbols_fd(pszBuffer, size, fileno(fileout));
+#endif
+    }
+}
+
 void PrintExceptionContinue(std::exception* pex, const char* pszThread)
 {
     std::string message = FormatException(pex, pszThread);
@@ -1031,13 +1054,13 @@ void PrintExceptionContinue(std::exception* pex, const char* pszThread)
 boost::filesystem::path GetDefaultDataDir()
 {
     namespace fs = boost::filesystem;
-    // Windows < Vista: C:\Documents and Settings\Username\Application Data\Primecoin
-    // Windows >= Vista: C:\Users\Username\AppData\Roaming\Primecoin
-    // Mac: ~/Library/Application Support/Primecoin
-    // Unix: ~/.primecoin
+    // Windows < Vista: C:\Documents and Settings\Username\Application Data\Peercoin
+    // Windows >= Vista: C:\Users\Username\AppData\Roaming\Peercoin
+    // Mac: ~/Library/Application Support/Peercoin
+    // Unix: ~/.peercoin
 #ifdef WIN32
     // Windows
-    return GetSpecialFolderPath(CSIDL_APPDATA) / "Primecoin";
+    return GetSpecialFolderPath(CSIDL_APPDATA) / "Peercoin";
 #else
     fs::path pathRet;
     char* pszHome = getenv("HOME");
@@ -1049,10 +1072,39 @@ boost::filesystem::path GetDefaultDataDir()
     // Mac
     pathRet /= "Library/Application Support";
     fs::create_directory(pathRet);
-    return pathRet / "Primecoin";
+    return pathRet / "Peercoin";
 #else
     // Unix
-    return pathRet / ".primecoin";
+    return pathRet / ".peercoin";
+#endif
+#endif
+}
+
+boost::filesystem::path GetOldDefaultDataDir()
+{
+    namespace fs = boost::filesystem;
+    // Windows < Vista: C:\Documents and Settings\Username\Application Data\PPCoin
+    // Windows >= Vista: C:\Users\Username\AppData\Roaming\PPCoin
+    // Mac: ~/Library/Application Support/PPCoin
+    // Unix: ~/.ppcoin
+#ifdef WIN32
+    // Windows
+    return GetSpecialFolderPath(CSIDL_APPDATA) / "PPCoin";
+#else
+    fs::path pathRet;
+    char* pszHome = getenv("HOME");
+    if (pszHome == NULL || strlen(pszHome) == 0)
+        pathRet = fs::path("/");
+    else
+        pathRet = fs::path(pszHome);
+#ifdef MAC_OSX
+    // Mac
+    pathRet /= "Library/Application Support";
+    fs::create_directory(pathRet);
+    return pathRet / "PPCoin";
+#else
+    // Unix
+    return pathRet / ".ppcoin";
 #endif
 #endif
 }
@@ -1080,7 +1132,17 @@ const boost::filesystem::path &GetDataDir(bool fNetSpecific)
             return path;
         }
     } else {
-        path = GetDefaultDataDir();
+        const boost::filesystem::path defaultDataDir = GetDefaultDataDir();
+
+        if (fs::is_directory(defaultDataDir))
+            path = defaultDataDir;
+        else {
+            const boost::filesystem::path oldDefaultDataDir = GetOldDefaultDataDir();
+            if (fs::is_directory(oldDefaultDataDir))
+                path = oldDefaultDataDir;
+            else
+                path = defaultDataDir;
+        }
     }
     if (fNetSpecific && GetBoolArg("-testnet", false))
         path /= "testnet";
@@ -1093,8 +1155,16 @@ const boost::filesystem::path &GetDataDir(bool fNetSpecific)
 
 boost::filesystem::path GetConfigFile()
 {
-    boost::filesystem::path pathConfigFile(GetArg("-conf", "primecoin.conf"));
+    boost::filesystem::path pathConfigFile(GetArg("-conf", "peercoin.conf"));
     if (!pathConfigFile.is_complete()) pathConfigFile = GetDataDir(false) / pathConfigFile;
+
+    // Load old config file if present
+    if (mapArgs.count("-conf") == 0 && !boost::filesystem::exists(pathConfigFile)) {
+        boost::filesystem::path pathOldConfigFile = GetDataDir(false) / "ppcoin.conf";
+        if (boost::filesystem::exists(pathOldConfigFile))
+            pathConfigFile = pathOldConfigFile;
+    }
+
     return pathConfigFile;
 }
 
@@ -1127,7 +1197,7 @@ void ReadConfigFile(map<string, string>& mapSettingsRet,
 
 boost::filesystem::path GetPidFile()
 {
-    boost::filesystem::path pathPidFile(GetArg("-pid", "primecoind.pid"));
+    boost::filesystem::path pathPidFile(GetArg("-pid", "peercoind.pid"));
     if (!pathPidFile.is_complete()) pathPidFile = GetDataDir() / pathPidFile;
     return pathPidFile;
 }
@@ -1299,7 +1369,11 @@ int64 GetTime()
 {
     if (nMockTime) return nMockTime;
 
+#ifdef TESTING
+    return time(NULL) + nTimeShift;
+#else
     return time(NULL);
+#endif
 }
 
 void SetMockTime(int64 nMockTimeIn)
@@ -1330,7 +1404,7 @@ void AddTimeData(const CNetAddr& ip, int64 nTime)
 
     // Add data
     vTimeOffsets.input(nOffsetSample);
-    printf("Added time data, samples %d, offset %+"PRI64d" (%+"PRI64d" minutes)\n", vTimeOffsets.size(), nOffsetSample, nOffsetSample/60);
+    printf("Added time data, samples %d, offset %+" PRI64d" (%+" PRI64d" minutes)\n", vTimeOffsets.size(), nOffsetSample, nOffsetSample/60);
     if (vTimeOffsets.size() >= 5 && vTimeOffsets.size() % 2 == 1)
     {
         int64 nMedian = vTimeOffsets.median();
@@ -1356,7 +1430,7 @@ void AddTimeData(const CNetAddr& ip, int64 nTime)
                 if (!fMatch)
                 {
                     fDone = true;
-                    string strMessage = _("Warning: Please check that your computer's date and time are correct! If your clock is wrong Primecoin will not work properly.");
+                    string strMessage = _("Warning: Please check that your computer's date and time are correct! If your clock is wrong Peercoin will not work properly.");
                     strMiscWarning = strMessage;
                     printf("*** %s\n", strMessage.c_str());
                     uiInterface.ThreadSafeMessageBox(strMessage, "", CClientUIInterface::MSG_WARNING);
@@ -1365,10 +1439,10 @@ void AddTimeData(const CNetAddr& ip, int64 nTime)
         }
         if (fDebug) {
             BOOST_FOREACH(int64 n, vSorted)
-                printf("%+"PRI64d"  ", n);
+                printf("%+" PRI64d"  ", n);
             printf("|  ");
         }
-        printf("nTimeOffset = %+"PRI64d"  (%+"PRI64d" minutes)\n", nTimeOffset, nTimeOffset/60);
+        printf("nTimeOffset = %+" PRI64d"  (%+" PRI64d" minutes)\n", nTimeOffset, nTimeOffset/60);
     }
 }
 
@@ -1415,7 +1489,7 @@ std::string FormatSubVersion(const std::string& name, int nClientVersion, const 
     if (!comments.empty())
         ss << "(" << boost::algorithm::join(comments, "; ") << ")";
     ss << "/";
-    ss << "Primecoin:" << FormatVersion(PRIMECOIN_VERSION);
+    ss << "Peercoin:" << FormatVersion(PEERCOIN_VERSION);
     ss << "(" << CLIENT_BUILD << ")/";
     return ss.str();
 }

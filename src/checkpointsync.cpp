@@ -1,15 +1,6 @@
-// Copyright (c) 2012-2013 PPCoin developers
-// Copyright (c) 2013 Primecoin developers
+// Copyright (c) 2012-2018 The Peercoin developers
 // Distributed under conditional MIT/X11 software license,
 // see the accompanying file COPYING
-//
-// The synchronized checkpoint system is first developed by Sunny King for
-// ppcoin network in 2012, giving cryptocurrency developers a tool to gain
-// additional network protection against 51% attack.
-//
-// Primecoin also adopts this security mechanism, and the enforcement of
-// checkpoints is explicitly granted by user, thus granting only temporary
-// consensual central control to developer at the threats of 51% attack.
 //
 // Concepts
 //
@@ -49,16 +40,16 @@
 // be manually entered by operator via the 'sendcheckpoint' command. The manual
 // mode is also the default mode (default value -1 for checkpointdepth).
 //
-// Command 'enforcecheckpoint' and configuration parameter 'checkpointenforce'
-// are for the users to explicitly consent to enforce the checkpoints issued
+// Command and configuration parameter 'enforcecheckpoint'
+// is for the users to explicitly consent to enforce the checkpoints issued
 // from checkpoint master. To enforce checkpoint, user needs to either issue
 // command 'enforcecheckpoint true', or set configuration parameter
-// checkpointenforce=1. The current enforcement setting can be queried via
+// enforcecheckpoint=1. The current enforcement setting can be queried via
 // command 'getcheckpoint', where 'subscribemode' displays either 'enforce'
 // or 'advisory'. The 'enforce' mode of subscribemode means checkpoints are
 // enforced. The 'advisory' mode of subscribemode means checkpoints are not
 // enforced but a warning message would be displayed if the node is on a 
-// different blockchain fork from the checkpoint, and this is the default mode.
+// different blockchain fork from the checkpoint.
 //
 
 #include <boost/foreach.hpp>
@@ -67,7 +58,8 @@
 #include "checkpointsync.h"
 
 #include "base58.h"
-#include "bitcoinrpc.h"
+#include "rpcserver.h"
+#include "rpcclient.h"
 #include "main.h"
 #include "txdb.h"
 #include "uint256.h"
@@ -77,8 +69,8 @@ using namespace std;
 
 
 // ppcoin: sync-checkpoint master key
-const std::string CSyncCheckpoint::strMainPubKey = "04c0c44f7e3bc58c734e65bb0e97860b2f5e53d12a5e1ea30ec6d73df821349f83ff0a061221dfcab3f1235d5b2fff85587a72f8f74f4c56d9e17087a1e8c28b04";
-const std::string CSyncCheckpoint::strTestPubKey = "0400c9611d333d6ddfc5dbfcb6ab3a7c00d56959cfda1ff2d94a8dc4c88050be18d0aa4b6c547ff4db33d708866c85616926278b05bcb80b66974280774720303b";
+const std::string CSyncCheckpoint::strMainPubKey = "04c0c707c28533fd5c9f79d2d3a2d80dff259ad8f915241cd14608fb9bc07c74830efe8438f2b272a866b4af5e0c2cc2a9909972aefbd976937e39f46bb38c277c";
+const std::string CSyncCheckpoint::strTestPubKey = "0400c195be8d5194007b3f02249f785a51505776bd8f43cc6d49206163e08a63ad9009c814966921c361b14949c51e281edc9347e7ce0e8c57019df1313a6cac7b";
 std::string CSyncCheckpoint::strMasterPrivKey = "";
 
 
@@ -160,7 +152,14 @@ bool WriteSyncCheckpoint(const uint256& hashCheckpoint)
 
 bool IsSyncCheckpointEnforced()
 {
-    return (GetBoolArg("-checkpointenforce", false) || mapArgs.count("-checkpointkey")); // checkpoint master node is always enforced
+    return (GetBoolArg("-enforcecheckpoint", true) || mapArgs.count("-checkpointkey")); // checkpoint master node is always enforced
+}
+
+void SetCheckpointEnforce(bool fEnforce)
+{
+    if (fEnforce)
+        strCheckpointWarning = "";
+    mapArgs["-enforcecheckpoint"] = (fEnforce ? "1" : "0");
 }
 
 bool AcceptPendingSyncCheckpoint()
@@ -373,7 +372,8 @@ bool IsMatureSyncCheckpoint()
     // sync-checkpoint should always be accepted block
     assert(mapBlockIndex.count(hashSyncCheckpoint));
     const CBlockIndex* pindexSync = mapBlockIndex[hashSyncCheckpoint];
-    return (nBestHeight >= pindexSync->nHeight + COINBASE_MATURITY);
+    return (nBestHeight >= pindexSync->nHeight + nCoinbaseMaturity ||
+            pindexSync->GetBlockTime() + nStakeMinAge < GetAdjustedTime());
 }
 
 // Is the sync-checkpoint too old?
@@ -530,9 +530,7 @@ Value enforcecheckpoint(const Array& params, bool fHelp)
     if (mapArgs.count("-checkpointkey") && !fEnforceCheckpoint)
         throw runtime_error(
             "checkpoint master node must enforce synchronized checkpoints.");
-    if (fEnforceCheckpoint)
-        strCheckpointWarning = "";
-    mapArgs["-checkpointenforce"] = (fEnforceCheckpoint ? "1" : "0");
+    SetCheckpointEnforce(fEnforceCheckpoint);
     return Value::null;
 }
 

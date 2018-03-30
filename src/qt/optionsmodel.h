@@ -25,10 +25,11 @@ public:
         ProxyIP,           // QString
         ProxyPort,         // int
         ProxySocksVersion, // int
-        Fee,               // qint64
         DisplayUnit,       // BitcoinUnits::Unit
         DisplayAddresses,  // bool
         Language,          // QString
+        CoinControlFeatures, // bool
+        CheckpointEnforce, // bool
         OptionIDRowCount,
     };
 
@@ -43,22 +44,31 @@ public:
     bool setData(const QModelIndex & index, const QVariant & value, int role = Qt::EditRole);
 
     /* Explicit getters */
-    qint64 getTransactionFee();
     bool getMinimizeToTray() { return fMinimizeToTray; }
     bool getMinimizeOnClose() { return fMinimizeOnClose; }
     int getDisplayUnit() { return nDisplayUnit; }
     bool getDisplayAddresses() { return bDisplayAddresses; }
     QString getLanguage() { return language; }
 
+    bool getCoinControlFeatures() { return fCoinControlFeatures; }
+
+    bool getCheckpointEnforce() { return fCheckpointEnforce; }
+
 private:
     int nDisplayUnit;
     bool bDisplayAddresses;
     bool fMinimizeToTray;
     bool fMinimizeOnClose;
+
+    bool fCoinControlFeatures;
+
     QString language;
+
+    bool fCheckpointEnforce;
 
 signals:
     void displayUnitChanged(int unit);
+    void coinControlFeaturesChanged(bool);
 };
 
 #endif // OPTIONSMODEL_H

@@ -1,7 +1,6 @@
 // Copyright (c) 2012 The Bitcoin developers
-// Copyright (c) 2013 Primecoin developers
-// Distributed under conditional MIT/X11 software license,
-// see the accompanying file COPYING.
+// Distributed under the MIT/X11 software license, see the accompanying
+// file COPYING or http://www.opensource.org/licenses/mit-license.php.
 #include <string>
 
 #include "version.h"
@@ -12,7 +11,7 @@
 const std::string CLIENT_NAME("Satoshi");
 
 // Client version number
-#define CLIENT_VERSION_SUFFIX   "-beta"
+#define CLIENT_VERSION_SUFFIX   ""
 
 
 // The following part of the code determines the CLIENT_BUILD variable.
@@ -48,9 +47,9 @@ const std::string CLIENT_NAME("Satoshi");
 
 #ifndef BUILD_DESC
 #    ifdef GIT_COMMIT_ID
-#        define BUILD_DESC BUILD_DESC_FROM_COMMIT(PRIMECOIN_VERSION_MAJOR, PRIMECOIN_VERSION_MINOR, PRIMECOIN_VERSION_REVISION, PRIMECOIN_VERSION_BUILD, GIT_COMMIT_ID)
+#        define BUILD_DESC BUILD_DESC_FROM_COMMIT(PEERCOIN_VERSION_MAJOR, PEERCOIN_VERSION_MINOR, PEERCOIN_VERSION_REVISION, PEERCOIN_VERSION_BUILD, GIT_COMMIT_ID)
 #    else
-#        define BUILD_DESC BUILD_DESC_FROM_UNKNOWN(PRIMECOIN_VERSION_MAJOR, PRIMECOIN_VERSION_MINOR, PRIMECOIN_VERSION_REVISION, PRIMECOIN_VERSION_BUILD)
+#        define BUILD_DESC BUILD_DESC_FROM_UNKNOWN(PEERCOIN_VERSION_MAJOR, PEERCOIN_VERSION_MINOR, PEERCOIN_VERSION_REVISION, PEERCOIN_VERSION_BUILD)
 #    endif
 #endif
 

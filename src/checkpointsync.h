@@ -1,9 +1,8 @@
-// Copyright (c) 2011-2013 PPCoin developers
-// Copyright (c) 2013 Primecoin developers
+// Copyright (c) 2012-2018 The Peercoin developers
 // Distributed under conditional MIT/X11 open source software license
 // see the accompanying file COPYING
-#ifndef PRIMECOIN_CHECKPOINTSYNC_H
-#define  PRIMECOIN_CHECKPOINTSYNC_H
+#ifndef PPCOIN_CHECKPOINTSYNC_H
+#define  PPCOIN_CHECKPOINTSYNC_H
 
 #include "net.h"
 #include "util.h"
@@ -24,6 +23,7 @@ extern std::string strCheckpointWarning;
 CBlockIndex* GetLastSyncCheckpoint();
 bool WriteSyncCheckpoint(const uint256& hashCheckpoint);
 bool IsSyncCheckpointEnforced();
+void SetCheckpointEnforce(bool fEnforce);
 bool AcceptPendingSyncCheckpoint();
 uint256 AutoSelectSyncCheckpoint();
 bool CheckSyncCheckpoint(const uint256& hashBlock, const CBlockIndex* pindexPrev);

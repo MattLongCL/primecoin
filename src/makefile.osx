@@ -1,10 +1,10 @@
 # -*- mode: Makefile; -*-
-# Copyright (c) 2011 Bitcoin Developers
-# Copyright (c) 2013 Primecoin Developers
-# Distributed under conditional MIT/X11 software license,
-# see the accompanying file COPYING.
+# Copyright (c) 2009-2010 Satoshi Nakamoto
+# Copyright (c) 2011-2018 The Peercoin developers
+# Distributed under the MIT/X11 software license, see the accompanying
+# file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-# Mac OS X makefile for bitcoin
+# Mac OS X makefile for peercoin
 # Originally by Laszlo Hanyecz (solar@heliacal.net)
 
 CXX=llvm-g++
@@ -57,13 +57,18 @@ LIBS += \
 TESTDEFS += -DBOOST_TEST_DYN_LINK
 endif
 
-DEFS=-DMAC_OSX -DMSG_NOSIGNAL=0 -DBOOST_SPIRIT_THREADSAFE
+DEFS=-DMAC_OSX -DMSG_NOSIGNAL=0 -DBOOST_SPIRIT_THREADSAFE -DHAVE_WORKING_BOOST_SLEEP_FOR
 
 ifdef RELEASE
+CFLAGS = -mmacosx-version-min=10.5 -O3
 # Compile for maximum compatibility and smallest size.
 # This requires that dependencies are compiled
 # the same way.
-CFLAGS = -mmacosx-version-min=10.5 -arch i386 -O3
+ifdef 64BIT
+CFLAGS += -arch x86_64
+else
+CFLAGS += -arch i386
+endif
 else
 DEBUGFLAGS = -g
 endif
@@ -75,6 +80,7 @@ CFLAGS += -Wall -Wextra -Wformat -Wformat-security -Wno-unused-parameter \
 OBJS= \
     leveldb/libleveldb.a \
     obj/alert.o \
+    obj/bitcoind.o \
     obj/version.o \
     obj/checkpoints.o \
     obj/netbase.o \
@@ -87,10 +93,14 @@ OBJS= \
     obj/main.o \
     obj/net.o \
     obj/protocol.o \
-    obj/bitcoinrpc.o \
+    obj/kernelrecord.o \
+    obj/rpcserver.o \
+    obj/rpcclient.o \
+    obj/rpcprotocol.o \
     obj/rpcdump.o \
     obj/rpcnet.o \
     obj/rpcmining.o \
+    obj/rpcminting.o \
     obj/rpcwallet.o \
     obj/rpcblockchain.o \
     obj/rpcrawtransaction.o \
@@ -99,13 +109,13 @@ OBJS= \
     obj/util.o \
     obj/wallet.o \
     obj/walletdb.o \
+    obj/kernel.o \
+    obj/checkpointsync.o \
     obj/hash.o \
     obj/bloom.o \
     obj/noui.o \
-    obj/leveldb.o \
-    obj/txdb.o \
-    obj/prime.o \
-    obj/checkpointsync.o
+    obj/leveldbwrapper.o \
+    obj/txdb.o
 
 ifndef USE_UPNP
 	override USE_UPNP = -
@@ -123,10 +133,10 @@ ifneq (${USE_IPV6}, -)
 	DEFS += -DUSE_IPV6=$(USE_IPV6)
 endif
 
-all: primecoind
+all: peercoind
 
-test check: test_primecoin FORCE
-	./test_primecoin
+test check: test_bitcoin FORCE
+	./test_bitcoin
 
 #
 # LevelDB support
@@ -134,6 +144,7 @@ test check: test_primecoin FORCE
 LIBS += $(CURDIR)/leveldb/libleveldb.a $(CURDIR)/leveldb/libmemenv.a
 DEFS += $(addprefix -I,$(CURDIR)/leveldb/include)
 DEFS += $(addprefix -I,$(CURDIR)/leveldb/helpers)
+DEFS += $(addprefix -I,$(CURDIR)/leveldb/helpers/memenv)
 leveldb/libleveldb.a:
 	@echo "Building LevelDB ..." && cd leveldb && $(MAKE) CC=$(CC) CXX=$(CXX) OPT="$(CFLAGS)" libleveldb.a libmemenv.a && cd ..
 
@@ -153,8 +164,9 @@ obj/%.o: %.cpp
 	      -e '/^$$/ d' -e 's/$$/ :/' < $(@:%.o=%.d) >> $(@:%.o=%.P); \
 	  rm -f $(@:%.o=%.d)
 
-primecoind: $(OBJS:obj/%=obj/%)
+peercoind: $(OBJS:obj/%=obj/%)
 	$(CXX) $(CFLAGS) -o $@ $(LIBPATHS) $^ $(LIBS)
+	@cp $@ ppcoind
 
 TESTOBJS := $(patsubst test/%.cpp,obj-test/%.o,$(wildcard test/*.cpp))
 
@@ -165,11 +177,12 @@ obj-test/%.o: test/%.cpp
 	      -e '/^$$/ d' -e 's/$$/ :/' < $(@:%.o=%.d) >> $(@:%.o=%.P); \
 	  rm -f $(@:%.o=%.d)
 
-test_primecoin: $(TESTOBJS) $(filter-out obj/init.o,$(OBJS:obj/%=obj/%))
+test_peercoin: $(TESTOBJS) $(filter-out obj/init.o,$(OBJS:obj/%=obj/%))
 	$(CXX) $(CFLAGS) -o $@ $(LIBPATHS) $^ $(LIBS) $(TESTLIBS)
 
 clean:
-	-rm -f primecoind test_primecoin
+	-rm -f peercoind test_peercoin
+	-rm -f ppcoind
 	-rm -f obj/*.o
 	-rm -f obj-test/*.o
 	-rm -f obj/*.P

@@ -1,58 +1,21 @@
-Primecoin integration/staging tree
+
+Peercoin Official Development Repo
 ==================================
 
-http://primecoin.org
+[![Build Status](https://travis-ci.org/peercoin/peercoin.svg?branch=master)](https://travis-ci.org/peercoin/peercoin)
 
-Copyright (c) 2013 Primecoin Developers
+### What is Peercoin?
+[Peercoin](https://peercoin.net) (abbreviated PPC), also known as PPCoin and Peer-to-Peer Coin is the first [cryptocurrency](https://en.wikipedia.org/wiki/Cryptocurrency) design introducing [proof-of-stake consensus](https://peercoin.net/assets/paper/peercoin-paper.pdf) as a security model, with a combined [proof-of-stake](https://peercoin.net/assets/paper/peercoin-paper.pdf)/[proof-of-work](https://en.wikipedia.org/wiki/Proof-of-work_system) minting system. Peercoin is based on [Bitcoin](https://bitcoin.org), while introducing many important innovations to cryptocurrency field including new security model, energy efficiency, better minting model and more adaptive response to rapid change in network computation power.
 
-Copyright (c) 2009-2013 Bitcoin Developers
-
-Copyright (c) 2011-2013 PPCoin Developers
-
-What is Primecoin?
-------------------
-
-Primecoin is an experimental cryptocurrency that introduces the first
-scientific computing proof-of-work to cryptocurrency technology. Primecoin's
-proof-of-work is an innovative design based on searching for prime number
-chains, providing potential scientific value in addition to minting and
-security for the network. Similar to Bitcoin, Primecoin enables instant payments
-to anyone, anywhere in the world. It also uses peer-to-peer technology to 
-operate with no central authority: managing transactions and issuing money are 
-carried out collectively by the network. Primecoin is also the name of the open
-source software which enables the use of this currency.
-
-For more information, as well as an immediately useable, binary version of
-the Primecoin client sofware, see http://primecoin.org.
-
-License
--------
-
-Primecoin is released under conditional MIT license. See  COPYING` for more
-information.
-
-Development process
--------------------
-
-Developers work in their own trees, then submit pull requests when they think
-their feature or bug fix is ready.
-
-If it is a simple/trivial/non-controversial change, then one of the Bitcoin
-development team members simply pulls it.
-
-If it is a *more complicated or potentially controversial* change, then the patch
-submitter will be asked to start a discussion (if they haven't already) on the
-ppcoin/primecoin forum (http://ppcointalk.org).
-
-The patch will be accepted if there is broad consensus that it is a good thing.
-Developers should expect to rework and resubmit patches if the code doesn't
-match the project's coding conventions (see `doc/coding.md`) or are
-controversial.
-
-The `master` branch is regularly built and tested, but is not guaranteed to be
-completely stable. [Tags](https://github.com/primecoin/primecoin/tags) are
-created regularly to indicate new official, stable release versions of
-Primecoin.
+### Peercoin Resources
+* Client and Source:
+[Client Binaries](https://peercoin.net/download),
+[Source Code](https://github.com/peercoin/peercoin)
+* Documentation: [Peercoin Whitepaper](https://peercoin.net/whitepaper),
+[Peercoin Wiki](https://github.com/peercoin/peercoin/wiki)
+* Help: 
+[Forum](https://talk.peercoin.net),
+[Intro & Important Links](https://talk.peercoin.net/t/what-is-peercoin-intro-important-links/2889)
 
 Testing
 -------
@@ -67,19 +30,40 @@ lots of money.
 Developers are strongly encouraged to write unit tests for new code, and to
 submit new unit tests for old code.
 
-Unit tests for the core code are in `src/test/`. To compile and run them:
+Unit tests can be compiled and run (assuming they weren't disabled in configure) with:
+  make check
 
-    cd src; make -f makefile.unix test
-
-Unit tests for the GUI code are in `src/qt/test/`. To compile and run them:
-
-    qmake BITCOIN_QT_TEST=1 -o Makefile.test bitcoin-qt.pro
-    make -f Makefile.test
-    ./bitcoin-qt_test
+Every pull request is built for both Windows and Linux on a dedicated server,
+and unit and sanity tests are automatically run. The binaries produced may be
+used for manual QA testing — a link to them will appear in a comment on the
+pull request posted by [BitcoinPullTester](https://github.com/BitcoinPullTester). See https://github.com/TheBlueMatt/test-scripts
+for the build/test scripts.
 
 ### Manual Quality Assurance (QA) Testing
 
 Large changes should have a test plan, and should be tested by somebody other
 than the developer who wrote the code.
 
-See https://github.com/bitcoin/QA/ for how to create a test plan.
+* Developers work in their own forks, then submit pull requests when they think their feature or bug fix is ready.
+* If it is a simple/trivial/non-controversial change, then one of the development team members simply pulls it.
+* If it is a more complicated or potentially controversial change, then the change may be discussed in the pull request, or the requester may be asked to start a discussion in the [Peercoin Forum](https://talk.peercoin.net) for a broader community discussion. 
+* The patch will be accepted if there is broad consensus that it is a good thing. Developers should expect to rework and resubmit patches if they don't match the project's coding conventions (see coding.txt) or are controversial.
+* From time to time a pull request will become outdated. If this occurs, and the pull is no longer automatically mergeable; a comment on the pull will be used to issue a warning of closure.  Pull requests closed in this manner will have their corresponding issue labeled 'stagnant'.
+* For development ideas and help see [here](https://talk.peercoin.net/c/protocol).
+
+## Branches:
+
+### develop (all pull requests should go here)
+The develop branch is used by developers to merge their newly implemented features to.
+Pull requests should always be made to this branch (except for critical fixes), and could possibly break the code.
+The develop branch is therefore unstable and not guaranteed to work on any system.
+
+### master (only updated by group members)
+The master branch get's updates from tested states of the develop branch.
+Therefore, the master branch should contain functional but experimental code.
+
+### release-* (the official releases)
+The release branch is identified by it's major and minor version number e.g. `release-0.6`.
+The official release tags are always made on a release branch.
+Release branches will typically branch from or merge tested code from the master branch to freeze the code for release.
+Only critical patches can be applied through pull requests directly on this branch, all non critical features should follow the standard path through develop -> master -> release-*

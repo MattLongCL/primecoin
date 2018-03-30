@@ -5,16 +5,30 @@ file COPYING or http://www.opensource.org/licenses/mit-license.php.
 This product includes software developed by the OpenSSL Project for use in the [OpenSSL Toolkit](http://www.openssl.org/). This product includes
 cryptographic software written by Eric Young ([eay@cryptsoft.com](mailto:eay@cryptsoft.com)), and UPnP software written by Thomas Bernard.
 
-UNIX BUILD NOTES
+UNIX BUILD NOTES FOR PEERCOIN
+====================
+
+To build in Terminal on Debian based Linux
+---------------------
+
+	git clone https://github.com/peercoin/peercoin
+	cd peercoin
+	git checkout v0.6.2ppc
+	./contrib/vagrant/install.sh
+
+
+UNIX BUILD NOTES FOR BITCOIN
 ====================
 
 To Build
 ---------------------
 
-	cd src/
-	make -f makefile.unix		# Headless bitcoin
+	./autogen.sh
+	./configure
+	make
 
-See readme-qt.rst for instructions on building Bitcoin-Qt, the graphical user interface.
+This will build Peercoin-Qt as well if the dependencies are met.
+See [readme-qt.md](readme-qt.md) for more information.
 
 Dependencies
 ---------------------
@@ -28,15 +42,15 @@ Dependencies
 
 [miniupnpc](http://miniupnp.free.fr/) may be used for UPnP port mapping.  It can be downloaded from [here](
 http://miniupnp.tuxfamily.org/files/).  UPnP support is compiled in and
-turned off by default.  Set USE_UPNP to a different value to control this:
+turned off by default.  See the configure options for upnp behavior desired:
 
-	USE_UPNP=     No UPnP support miniupnp not required
-	USE_UPNP=0    (the default) UPnP support turned off by default at runtime
-	USE_UPNP=1    UPnP support turned on by default at runtime
+	--with-miniupnpc         No UPnP support miniupnp not required
+	--disable-upnp-default   (the default) UPnP support turned off by default at runtime
+	--enable-upnp-default    UPnP support turned on by default at runtime
 
 IPv6 support may be disabled by setting:
 
-	USE_IPV6=0    Disable IPv6 support
+	--disable-ipv6           Disable IPv6 support
 
 Licenses of statically linked libraries:
  Berkeley DB   New BSD license with additional requirement that linked
@@ -44,12 +58,12 @@ Licenses of statically linked libraries:
  Boost         MIT-like license
  miniupnpc     New (3-clause) BSD license
 
-- Versions used in this release:
--  GCC           4.3.3
--  OpenSSL       0.9.8k
--  Berkeley DB   4.8.30.NC
--  Boost         1.37
--  miniupnpc     1.6
+Versions used in this release:
+ GCC           4.3.3
+ OpenSSL       1.0.1g
+ Berkeley DB   4.8.30.NC
+ Boost         1.37
+ miniupnpc     1.6
 
 Dependency Build Instructions: Ubuntu & Debian
 ----------------------------------------------
@@ -76,27 +90,29 @@ for other Ubuntu & Debian:
 
 Optional:
 
-	sudo apt-get install libminiupnpc-dev (see USE_UPNP compile flag)
+	sudo apt-get install libminiupnpc-dev (see --with-miniupnpc and --enable-upnp-default)
 
 
 Dependency Build Instructions: Gentoo
 -------------------------------------
 
-Note: If you just want to install bitcoind on Gentoo, you can add the Bitcoin overlay and use your package manager:
+Note: Currently, there is no peercoin ebuild available in overlay 
 
-	layman -a bitcoin && emerge bitcoind
-	emerge -av1 --noreplace boost glib openssl sys-libs/db:4.8
+	emerge -av1 --noreplace dev-libs/boost dev-libs/glib dev-libs/openssl sys-libs/db:4.8
 
+Note: If you like to have UPnP support, you need to install net-libs/miniupnpc.
+ 
 Take the following steps to build (no UPnP support):
 
-	cd ${BITCOIN_DIR}/src
-	make -f makefile.unix USE_UPNP= USE_IPV6=1 BDB_INCLUDE_PATH='/usr/include/db4.8'
-	strip bitcoind
+	cd ${PEERCOIN_DIR}
+	./autogen.sh
+	./configure --without-miniupnpc CXXFLAGS="-i/usr/include/db4.8"
+	strip src/peercoind
 
 
 Notes
 -----
-The release is built with GCC and then "strip bitcoind" to strip the debug
+The release is built with GCC and then "strip peercoind" to strip the debug
 symbols, which reduces the executable size by about 90%.
 
 
@@ -129,7 +145,13 @@ If you need to build Boost yourself:
 Security
 --------
 To help make your bitcoin installation more secure by making certain attacks impossible to
-exploit even if a vulnerability is found, you can take the following measures:
+exploit even if a vulnerability is found, binaries are hardened by default.
+This can be disabled with:
+
+./configure --enable-hardening
+
+
+Hardening enables the following features:
 
 * Position Independent Executable
     Build position independent code to take advantage of Address Space Layout Randomization
@@ -140,10 +162,6 @@ exploit even if a vulnerability is found, you can take the following measures:
 
     On an Amd64 processor where a library was not compiled with -fPIC, this will cause an error
     such as: "relocation R_X86_64_32 against `......' can not be used when making a shared object;"
-
-    To build with PIE, use:
-
-    	make -f makefile.unix ... -e PIE=1
 
     To test that you have built PIE executable, install scanelf, part of paxutils, and use:
 

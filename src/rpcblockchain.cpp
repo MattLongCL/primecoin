@@ -1,38 +1,33 @@
 // Copyright (c) 2010 Satoshi Nakamoto
 // Copyright (c) 2009-2012 The Bitcoin developers
-// Copyright (c) 2013 Primecoin developers
-// Distributed under conditional MIT/X11 software license,
-// see the accompanying file COPYING
+// Distributed under the MIT/X11 software license, see the accompanying
+// file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include "rpcserver.h"
 #include "main.h"
-#include "bitcoinrpc.h"
-#include "prime.h"
-#include "wallet.h"
-#include "init.h"
 
 using namespace json_spirit;
 using namespace std;
 
 void ScriptPubKeyToJSON(const CScript& scriptPubKey, Object& out);
 
-// Primecoin: get prime difficulty value (chain length)
 double GetDifficulty(const CBlockIndex* blockindex)
 {
-    // Floating point number that is approximate log scale of prime target,
-    // minimum difficulty = 256, maximum difficulty = 2039
+    // Floating point number that is a multiple of the minimum difficulty,
+    // minimum difficulty = 1.0.
     if (blockindex == NULL)
     {
         if (pindexBest == NULL)
-            return 256.0;
+            return 1.0;
         else
-            blockindex = pindexBest;
+            blockindex = GetLastBlockIndex(pindexBest, false);
     }
 
-    double dDiff = GetPrimeDifficulty(blockindex->nBits);
-    return dDiff;
+    return blockindex->GetBlockDifficulty();
 }
 
-Object blockToJSON(const CBlock& block, const CBlockIndex* blockindex)
+
+Object blockToJSON(const CBlock& block, const CBlockIndex* blockindex, bool fPrintTransactionDetail)
 {
     Object result;
     result.push_back(Pair("hash", block.GetHash().GetHex()));
@@ -42,25 +37,41 @@ Object blockToJSON(const CBlock& block, const CBlockIndex* blockindex)
     result.push_back(Pair("size", (int)::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION)));
     result.push_back(Pair("height", blockindex->nHeight));
     result.push_back(Pair("version", block.nVersion));
-    result.push_back(Pair("headerhash", block.GetHeaderHash().GetHex()));
     result.push_back(Pair("merkleroot", block.hashMerkleRoot.GetHex()));
-    Array txs;
-    BOOST_FOREACH(const CTransaction&tx, block.vtx)
-        txs.push_back(tx.GetHash().GetHex());
-    result.push_back(Pair("tx", txs));
-    result.push_back(Pair("time", (boost::int64_t)block.GetBlockTime()));
+    result.push_back(Pair("time", (boost::uint64_t)block.GetBlockTime()));
     result.push_back(Pair("nonce", (boost::uint64_t)block.nNonce));
     result.push_back(Pair("bits", HexBits(block.nBits)));
-    result.push_back(Pair("difficulty", GetPrimeDifficulty(block.nBits)));
-    result.push_back(Pair("transition", GetPrimeDifficulty(blockindex->nWorkTransition)));
-    CBigNum bnPrimeChainOrigin = CBigNum(block.GetHeaderHash()) * block.bnPrimeChainMultiplier;
-    result.push_back(Pair("primechain", GetPrimeChainName(blockindex->nPrimeChainType, blockindex->nPrimeChainLength).c_str()));
-    result.push_back(Pair("primeorigin", bnPrimeChainOrigin.ToString().c_str()));
+    result.push_back(Pair("difficulty", GetDifficulty(blockindex)));
+    result.push_back(Pair("mint", ValueFromAmount(blockindex->nMint)));
 
     if (blockindex->pprev)
         result.push_back(Pair("previousblockhash", blockindex->pprev->GetBlockHash().GetHex()));
     if (blockindex->pnext)
         result.push_back(Pair("nextblockhash", blockindex->pnext->GetBlockHash().GetHex()));
+
+    result.push_back(Pair("flags", strprintf("%s%s", blockindex->IsProofOfStake()? "proof-of-stake" : "proof-of-work", blockindex->GeneratedStakeModifier()? " stake-modifier": "")));
+    result.push_back(Pair("proofhash", blockindex->IsProofOfStake()? blockindex->hashProofOfStake.GetHex() : blockindex->GetBlockHash().GetHex()));
+    result.push_back(Pair("entropybit", (int)blockindex->GetStakeEntropyBit()));
+    result.push_back(Pair("modifier", strprintf("%016" PRI64x, blockindex->nStakeModifier)));
+    result.push_back(Pair("modifierchecksum", strprintf("%08x", blockindex->nStakeModifierChecksum)));
+
+    Array txinfo;
+    BOOST_FOREACH (const CTransaction& tx, block.vtx)
+    {
+        if (fPrintTransactionDetail)
+        {
+            txinfo.push_back(tx.ToStringShort());
+            txinfo.push_back(DateTimeStrFormat(tx.nTime));
+            BOOST_FOREACH(const CTxIn& txin, tx.vin)
+                txinfo.push_back(txin.ToStringShort());
+            BOOST_FOREACH(const CTxOut& txout, tx.vout)
+                txinfo.push_back(txout.ToStringShort());
+        }
+        else
+            txinfo.push_back(tx.GetHash().GetHex());
+    }
+    result.push_back(Pair("tx", txinfo));
+
     return result;
 }
 
@@ -81,9 +92,13 @@ Value getdifficulty(const Array& params, bool fHelp)
     if (fHelp || params.size() != 0)
         throw runtime_error(
             "getdifficulty\n"
-            "Returns the proof-of-work difficulty in prime chain length.");
+            "Returns difficulty as a multiple of the minimum difficulty.");
 
-    return GetDifficulty();
+    Object obj;
+    obj.push_back(Pair("proof-of-work",        GetDifficulty()));
+    obj.push_back(Pair("proof-of-stake",       GetDifficulty(GetLastBlockIndex(pindexBest, true))));
+    obj.push_back(Pair("search-interval",      (int)nLastCoinStakeSearchInterval));
+    return obj;
 }
 
 
@@ -95,7 +110,8 @@ Value settxfee(const Array& params, bool fHelp)
             "<amount> is a real and is rounded to 0.01 (cent)\n"
             "Minimum and default transaction fee per KB is 1 cent");
 
-    nTransactionFee = (AmountFromValue(params[0]) / CENT) * CENT; // round to cent
+    nTransactionFee = AmountFromValue(params[0]);
+    nTransactionFee = (nTransactionFee / CENT) * CENT;  // round to cent
     return true;
 }
 
@@ -131,11 +147,24 @@ Value getblockhash(const Array& params, bool fHelp)
     return pblockindex->phashBlock->GetHex();
 }
 
+Value getbestblockhash(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() != 0)
+        throw runtime_error(
+            "getbestblockhash\n"
+            "\nReturns the hash of the best (tip) block in the longest block chain.");
+
+    CBlockIndex* pblockindex = mapBlockIndex[hashBestChain];
+    return pblockindex->phashBlock->GetHex();
+}
+
 Value getblock(const Array& params, bool fHelp)
 {
-    if (fHelp || params.size() != 1)
+    if (fHelp || params.size() < 1 || params.size() > 3)
         throw runtime_error(
-            "getblock <hash>\n"
+            "getblock <hash> [verbose] [txinfo]\n"
+            "verbose optional (default true) if false output hash like bitcoin-cli\n"
+            "txinfo optional to print more detailed tx info\n"
             "Returns details of a block with given block-hash.");
 
     std::string strHash = params[0].get_str();
@@ -148,7 +177,24 @@ Value getblock(const Array& params, bool fHelp)
     CBlockIndex* pblockindex = mapBlockIndex[hash];
     block.ReadFromDisk(pblockindex);
 
-    return blockToJSON(block, pblockindex);
+    bool fTxinfo = false;
+    if (params.size() > 2)
+      fTxinfo = params[2].get_bool();
+
+    // bitcoin-cli verbose=0 support
+    bool fVerbose = true;
+    if (params.size() > 1)
+      fVerbose = params[1].get_bool();
+
+    if (!fVerbose)
+      {
+        CDataStream ssBlock(SER_NETWORK, PROTOCOL_VERSION);
+        ssBlock << block;
+	std::string strHex = HexStr(ssBlock.begin(), ssBlock.end());
+        return strHex;
+      }
+ 
+    return blockToJSON(block, pblockindex, fTxinfo);
 }
 
 Value gettxoutsetinfo(const Array& params, bool fHelp)
@@ -218,152 +264,4 @@ Value gettxout(const Array& params, bool fHelp)
     return ret;
 }
 
-// Primecoin: list prime chain records within primecoin network
-Value listprimerecords(const Array& params, bool fHelp)
-{
-    if (fHelp || params.size() < 1 || params.size() > 2)
-        throw runtime_error(
-            "listprimerecords <primechain length> [primechain type]\n"
-            "Returns the list of record prime chains in primecoin network.\n"
-            "<primechain length> is integer like 10, 11, 12 etc.\n"
-            "[primechain type] is optional type, among 1CC, 2CC and TWN");
 
-    int nPrimeChainLength = params[0].get_int();
-    unsigned int nPrimeChainType = 0;
-    if (params.size() > 1)
-    {
-        std::string strPrimeChainType = params[1].get_str();
-        if (strPrimeChainType.compare("1CC") == 0)
-            nPrimeChainType = PRIME_CHAIN_CUNNINGHAM1;
-        else if (strPrimeChainType.compare("2CC") == 0)
-            nPrimeChainType = PRIME_CHAIN_CUNNINGHAM2;
-        else if (strPrimeChainType.compare("TWN") == 0)
-            nPrimeChainType = PRIME_CHAIN_BI_TWIN;
-        else
-            throw runtime_error("Prime chain type must be 1CC, 2CC or TWN.");
-    }
-
-    Array ret;
-
-    CBigNum bnPrimeRecord = 0;
-
-    for (CBlockIndex* pindex = pindexGenesisBlock; pindex; pindex = pindex->pnext)
-    {
-        if (nPrimeChainLength != (int) TargetGetLength(pindex->nPrimeChainLength))
-            continue; // length not matching, next block
-        if (nPrimeChainType && nPrimeChainType != pindex->nPrimeChainType)
-            continue; // type not matching, next block
-
-        CBlock block;
-        block.ReadFromDisk(pindex); // read block
-        CBigNum bnPrimeChainOrigin = CBigNum(block.GetHeaderHash()) * block.bnPrimeChainMultiplier; // compute prime chain origin
-
-        if (bnPrimeChainOrigin > bnPrimeRecord)
-        {
-            bnPrimeRecord = bnPrimeChainOrigin; // new record in primecoin
-            Object entry;
-            entry.push_back(Pair("time", DateTimeStrFormat("%Y-%m-%d %H:%M:%S UTC", pindex->GetBlockTime()).c_str()));
-            entry.push_back(Pair("epoch", (boost::int64_t) pindex->GetBlockTime()));
-            entry.push_back(Pair("height", pindex->nHeight));
-            entry.push_back(Pair("ismine", pwalletMain->IsMine(block.vtx[0])));
-            CTxDestination address;
-            entry.push_back(Pair("mineraddress", (block.vtx[0].vout.size() > 1)? "multiple" : ExtractDestination(block.vtx[0].vout[0].scriptPubKey, address)? CBitcoinAddress(address).ToString().c_str() : "invalid"));
-            entry.push_back(Pair("primedigit", (int) bnPrimeChainOrigin.ToString().length()));
-            entry.push_back(Pair("primechain", GetPrimeChainName(pindex->nPrimeChainType, pindex->nPrimeChainLength).c_str()));
-            entry.push_back(Pair("primeorigin", bnPrimeChainOrigin.ToString().c_str()));
-            entry.push_back(Pair("primorialform", GetPrimeOriginPrimorialForm(bnPrimeChainOrigin).c_str()));
-            ret.push_back(entry);
-        }
-    }
-
-    return ret;
-}
-
-// Primecoin: list top prime chain within primecoin network
-Value listtopprimes(const Array& params, bool fHelp)
-{
-    if (fHelp || params.size() < 1 || params.size() > 2)
-        throw runtime_error(
-            "listtopprimes <primechain length> [primechain type]\n"
-            "Returns the list of top prime chains in primecoin network.\n"
-            "<primechain length> is integer like 10, 11, 12 etc.\n"
-            "[primechain type] is optional type, among 1CC, 2CC and TWN");
-
-    int nPrimeChainLength = params[0].get_int();
-    unsigned int nPrimeChainType = 0;
-    if (params.size() > 1)
-    {
-        std::string strPrimeChainType = params[1].get_str();
-        if (strPrimeChainType.compare("1CC") == 0)
-            nPrimeChainType = PRIME_CHAIN_CUNNINGHAM1;
-        else if (strPrimeChainType.compare("2CC") == 0)
-            nPrimeChainType = PRIME_CHAIN_CUNNINGHAM2;
-        else if (strPrimeChainType.compare("TWN") == 0)
-            nPrimeChainType = PRIME_CHAIN_BI_TWIN;
-        else
-            throw runtime_error("Prime chain type must be 1CC, 2CC or TWN.");
-    }
-
-    // Search for top prime chains
-    unsigned int nRankingSize = 10; // ranking list size
-    unsigned int nSortVectorSize = 64; // vector size for sort operation
-    CBigNum bnPrimeQualify = 0; // minimum qualify value for ranking list
-    vector<pair<CBigNum, uint256> > vSortedByOrigin;
-    for (CBlockIndex* pindex = pindexGenesisBlock; pindex; pindex = pindex->pnext)
-    {
-        if (nPrimeChainLength != (int) TargetGetLength(pindex->nPrimeChainLength))
-            continue; // length not matching, next block
-        if (nPrimeChainType && nPrimeChainType != pindex->nPrimeChainType)
-            continue; // type not matching, next block
-
-        CBlock block;
-        block.ReadFromDisk(pindex); // read block
-        CBigNum bnPrimeChainOrigin = CBigNum(block.GetHeaderHash()) * block.bnPrimeChainMultiplier; // compute prime chain origin
-
-        if (bnPrimeChainOrigin > bnPrimeQualify)
-            vSortedByOrigin.push_back(make_pair(bnPrimeChainOrigin, block.GetHash()));
-
-        if (vSortedByOrigin.size() >= nSortVectorSize)
-        {
-            // Sort prime chain candidates
-            sort(vSortedByOrigin.begin(), vSortedByOrigin.end());
-            reverse(vSortedByOrigin.begin(), vSortedByOrigin.end());
-            // Truncate candidate list
-            while (vSortedByOrigin.size() > nRankingSize)
-                vSortedByOrigin.pop_back();
-            // Update minimum qualify value for top prime chains
-            bnPrimeQualify = vSortedByOrigin.back().first;
-        }
-    }
-
-    // Final sort of prime chain candidates
-    sort(vSortedByOrigin.begin(), vSortedByOrigin.end());
-    reverse(vSortedByOrigin.begin(), vSortedByOrigin.end());
-    // Truncate candidate list
-    while (vSortedByOrigin.size() > nRankingSize)
-        vSortedByOrigin.pop_back();
-
-    // Output top prime chains
-    Array ret;
-    BOOST_FOREACH(const PAIRTYPE(CBigNum, uint256)& item, vSortedByOrigin)
-    {
-        CBigNum bnPrimeChainOrigin = item.first;
-        CBlockIndex* pindex = mapBlockIndex[item.second];
-        CBlock block;
-        block.ReadFromDisk(pindex); // read block
-        Object entry;
-        entry.push_back(Pair("time", DateTimeStrFormat("%Y-%m-%d %H:%M:%S UTC", pindex->GetBlockTime()).c_str()));
-        entry.push_back(Pair("epoch", (boost::int64_t) pindex->GetBlockTime()));
-        entry.push_back(Pair("height", pindex->nHeight));
-        entry.push_back(Pair("ismine", pwalletMain->IsMine(block.vtx[0])));
-        CTxDestination address;
-        entry.push_back(Pair("mineraddress", (block.vtx[0].vout.size() > 1)? "multiple" : ExtractDestination(block.vtx[0].vout[0].scriptPubKey, address)? CBitcoinAddress(address).ToString().c_str() : "invalid"));
-        entry.push_back(Pair("primedigit", (int) bnPrimeChainOrigin.ToString().length()));
-        entry.push_back(Pair("primechain", GetPrimeChainName(pindex->nPrimeChainType, pindex->nPrimeChainLength).c_str()));
-        entry.push_back(Pair("primeorigin", bnPrimeChainOrigin.ToString().c_str()));
-        entry.push_back(Pair("primorialform", GetPrimeOriginPrimorialForm(bnPrimeChainOrigin).c_str()));
-        ret.push_back(entry);
-    }
-
-    return ret;
-}

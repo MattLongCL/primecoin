@@ -146,9 +146,9 @@ void BitcoinAmountField::unitChanged(int idx)
     amount->setMaximum(qPow(10, BitcoinUnits::amountDigits(currentUnit)) - qPow(10, -amount->decimals()));
 
     if(currentUnit == BitcoinUnits::uBTC)
-        amount->setSingleStep(1.0);
+        amount->setSingleStep(0.01);
     else
-        amount->setSingleStep(1.0);
+        amount->setSingleStep(0.001);
 
     if(valid)
     {
